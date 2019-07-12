@@ -198,7 +198,7 @@ from ansible.module_utils.basic import AnsibleModule, missing_required_lib
 from ansible.module_utils._text import to_native
 import json
 import traceback
-
+import xml.etree.ElementTree as ET
 
 try:
     from zabbix_api import ZabbixAPI, ZabbixAPIException
@@ -210,6 +210,55 @@ except ImportError:
 
 
 class Template(object):
+    # rules schema latest version
+    update_rules = {
+        'applications': {
+            'createMissing': True,
+            'deleteMissing': True
+        },
+        'discoveryRules': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'graphs': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'httptests': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'items': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'templates': {
+            'createMissing': True,
+            'updateExisting': True
+        },
+        'templateLinkage': {
+            'createMissing': True
+        },
+        'templateScreens': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'triggers': {
+            'createMissing': True,
+            'updateExisting': True,
+            'deleteMissing': True
+        },
+        'valueMaps': {
+            'createMissing': True,
+            'updateExisting': True
+        }
+    }
+
     def __init__(self, module, zbx):
         self._module = module
         self._zapi = zbx
@@ -318,12 +367,14 @@ class Template(object):
         else:
             return obj
 
-    def dump_template(self, template_ids):
+    def dump_template(self, template_ids,format):
+        if format not in ["json","xml"]:
+            raise Exception("Template format not recongnized, only json and xml is supported")
         if self._module.check_mode:
             self._module.exit_json(changed=True)
         try:
             dump = self._zapi.configuration.export({
-                'format': 'json',
+                'format': format,
                 'options': {'templates': template_ids}
             })
             return self.load_json_template(dump)
@@ -372,75 +423,47 @@ class Template(object):
         parsed_template_json = self.load_json_template(template_json)
         if template_name != parsed_template_json['zabbix_export']['templates'][0]['template']:
             self._module.fail_json(msg='JSON template name does not match presented name')
+        self.import_template(template= template_json, format="json")
+       
+    def import_template_xml(self, template_xml, template_name=None):
+        parsed_template_xml = self.load_xml_template(template_xml)
+        if template_name != parsed_template_xml.get('zabbix_export').get('templates').iter()[0].get('template'):
+            self._module.fail_json(msg='XML template name does not match presented name')
+        self.import_template(template= template_xml, format="xml")
 
-        # rules schema latest version
-        update_rules = {
-            'applications': {
-                'createMissing': True,
-                'deleteMissing': True
-            },
-            'discoveryRules': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'graphs': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'httptests': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'items': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'templates': {
-                'createMissing': True,
-                'updateExisting': True
-            },
-            'templateLinkage': {
-                'createMissing': True
-            },
-            'templateScreens': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'triggers': {
-                'createMissing': True,
-                'updateExisting': True,
-                'deleteMissing': True
-            },
-            'valueMaps': {
-                'createMissing': True,
-                'updateExisting': True
-            }
-        }
-
+        
+    def _import_template(self,template,format):
+        if format not in ["json","xml"]:
+            raise Exception("Template format not recongnized, only json and xml is supported")
         try:
             # old api version support here
             api_version = self._zapi.api_version()
             # updateExisting for application removed from zabbix api after 3.2
             if LooseVersion(api_version).version[:2] <= LooseVersion(
                     '3.2').version:
-                update_rules['applications']['updateExisting'] = True
+                self.update_rules['applications']['updateExisting'] = True
 
             self._zapi.configuration.import_({
-                'format': 'json',
-                'source': template_json,
-                'rules': update_rules
+                'format': format,
+                'source': template,
+                'rules': self.update_rules
             })
         except ZabbixAPIException as e:
             self._module.fail_json(
-                msg='Unable to import JSON template',
+                msg='Unable to import %S template' % format.upper(),
                 details=to_native(e),
                 exception=traceback.format_exc()
             )
+  
+    def load_xml_template(self,template_xml):
+        try:
+            return ET.fromstring(template_xml)
+        except ET.ParseError as e:
+            self._module.fail_json(
+                msg='Invalid xml provided',
+                details=to_native(e),
+                exception=traceback.format_exc()
+            )        
 
 
 def main():
@@ -460,10 +483,10 @@ def main():
             clear_templates=dict(type='list', required=False),
             macros=dict(type='list', required=False),
             state=dict(default="present", choices=['present', 'absent',
-                                                   'dump']),
+                                                   'dump_json','dump_xml']),
             timeout=dict(type='int', default=10)
         ),
-        required_one_of=[['template_name', 'template_json']],
+        required_one_of=[['template_name', 'template_json','template_xml'], ['template_json','template_xml']],
         supports_check_mode=True
     )
 
@@ -478,6 +501,7 @@ def main():
     validate_certs = module.params['validate_certs']
     template_name = module.params['template_name']
     template_json = module.params['template_json']
+    template_xml = module.params['template_xml']
     template_groups = module.params['template_groups']
     link_templates = module.params['link_templates']
     clear_templates = module.params['clear_templates']
@@ -500,11 +524,19 @@ def main():
         # Ensure template_name is not empty for safety check in import_template
         template_loaded = template.load_json_template(template_json)
         template_name = template_loaded['zabbix_export']['templates'][0]['template']
+    elif template_xml and not template_name:
+        # Ensure template_name is not empty for safety check in import_template
+        template_loaded = template.load_xml_template(template_xml)
+        template_name = template_loaded.get('zabbix_export').get('templates').iter()[0].get('template')
     elif template_name and not template_groups and state == 'present':
         module.fail_json(msg="Option template_groups is required when template_json is not used")
 
     template_ids = template.get_template_ids([template_name])
     existing_template_json = None
+    if "dump" in state:
+        format = state.split("_")[1]
+    else:
+        format = "json"
     if template_ids:
         existing_template_json = template.dump_template(template_ids)
 
@@ -520,7 +552,7 @@ def main():
                          result="Successfully delete template %s" %
                          template_name)
 
-    elif state == "dump":
+    elif (state == "dump_xml") or (state == "dump_json"):
         if not template_ids:
             module.fail_json(msg='Template not found: %s' % template_name)
         module.exit_json(changed=False, template_json=existing_template_json)

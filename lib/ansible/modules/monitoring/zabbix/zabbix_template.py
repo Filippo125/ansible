@@ -426,13 +426,13 @@ class Template(object):
         parsed_template_json = self.load_json_template(template_json)
         if template_name != parsed_template_json['zabbix_export']['templates'][0]['template']:
             self._module.fail_json(msg='JSON template name does not match presented name')
-        self.import_template(template= template_json, dump_format="json")
+        self._import_template(template= template_json, dump_format="json")
 
     def import_template_xml(self, template_xml, template_name=None):
         parsed_template_xml = self.load_xml_template(template_xml)
         if template_name != parsed_template_xml.get('zabbix_export').get('templates').iter()[0].get('template'):
             self._module.fail_json(msg='XML template name does not match presented name')
-        self.import_template(template= template_xml, dump_format="xml")
+        self._import_template(template= template_xml, dump_format="xml")
 
 
     def _import_template(self,template,dump_format):
@@ -556,7 +556,7 @@ def main():
                          result="Successfully delete template %s" %
                          template_name)
 
-    elif (state == "dump_xml") or (state == "dump_json"):
+    elif "dump" in state:
         if not template_ids:
             module.fail_json(msg='Template not found: %s' % template_name)
         if dump_format == "json":

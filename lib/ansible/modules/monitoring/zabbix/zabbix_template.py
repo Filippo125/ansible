@@ -317,7 +317,7 @@ class Template(object):
     def update_template(self, templateids, template_json,
                         group_ids, child_template_ids,
                         clear_template_ids, macros,
-                        existing_template_json=None):
+                        existing_template=None):
         changed = False
         template_changes = {}
         if group_ids is not None:
@@ -333,7 +333,7 @@ class Template(object):
         if template_json:
             parsed_template_json = self.load_json_template(template_json)
             if self.diff_template(parsed_template_json,
-                                  existing_template_json):
+                                  existing_template):
                 do_import = True
                 changed = True
 
@@ -349,7 +349,7 @@ class Template(object):
 
         if do_import:
             self.import_template(template_json,
-                                 existing_template_json['zabbix_export']['templates'][0]['template'])
+                                 existing_template['zabbix_export']['templates'][0]['template'])
 
         return changed
 
@@ -536,13 +536,13 @@ def main():
         module.fail_json(msg="Option template_groups is required when template_json is not used")
 
     template_ids = template.get_template_ids([template_name])
-    existing_template_json = None
+    existing_template = None
     if "dump" in state:
         dump_format = state.split("_")[1]
     else:
         dump_format = "json"
     if template_ids:
-        existing_template_json = template.dump_template(template_ids,dump_format)
+        existing_template = template.dump_template(template_ids,dump_format)
 
     # delete template
     if state == "absent":
@@ -561,17 +561,17 @@ def main():
             module.fail_json(msg='Template not found: %s' % template_name)
         if dump_format == "json":
             # to retrcompatibility
-            module.exit_json(changed=False, template_json=existing_template_json,format=dump_format)
+            module.exit_json(changed=False, template_json=existing_template,format=dump_format)
         else:
-            module.exit_json(changed=False, template=existing_template_json,format=dump_format)
+            module.exit_json(changed=False, template=existing_template,format=dump_format)
     elif state == "present":
         child_template_ids = None
         if link_templates is not None:
             existing_child_templates = None
-            if existing_template_json:
+            if existing_template:
                 existing_child_templates = set(list(
-                    tmpl['name'] for tmpl in existing_template_json['zabbix_export']['templates'][0]['templates']))
-            if not existing_template_json or set(link_templates) != existing_child_templates:
+                    tmpl['name'] for tmpl in existing_template['zabbix_export']['templates'][0]['templates']))
+            if not existing_template or set(link_templates) != existing_child_templates:
                 child_template_ids = template.get_template_ids(link_templates)
 
         clear_template_ids = []
@@ -582,8 +582,8 @@ def main():
         if template_groups is not None:
             # If the template exists, compare the already set groups
             existing_groups = None
-            if existing_template_json:
-                existing_groups = set(list(group['name'] for group in existing_template_json['zabbix_export']['groups']))
+            if existing_template:
+                existing_groups = set(list(group['name'] for group in existing_template['zabbix_export']['groups']))
             if not existing_groups or set(template_groups) != existing_groups:
                 group_ids = template.get_group_ids_by_group_names(template_groups)
 
@@ -595,8 +595,8 @@ def main():
                 for key in macroitem:
                     macroitem[key] = str(macroitem[key])
 
-            if existing_template_json:
-                existing_macros = existing_template_json['zabbix_export']['templates'][0]['macros']
+            if existing_template:
+                existing_macros = existing_template['zabbix_export']['templates'][0]['macros']
             if not existing_macros or template_macros != existing_macros:
                 macros = template_macros
 
@@ -610,7 +610,7 @@ def main():
             changed = template.update_template(template_ids[0], template_json,
                                                group_ids, child_template_ids,
                                                clear_template_ids, macros,
-                                               existing_template_json)
+                                               existing_template)
             module.exit_json(changed=changed,
                              result="Successfully updated template: %s" %
                              template_name)

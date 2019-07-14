@@ -428,12 +428,6 @@ class Template(object):
             self._module.fail_json(msg='JSON template name does not match presented name')
         self._import_template(template= template_json, dump_format="json")
 
-    def import_template_xml(self, template_xml, template_name=None):
-        parsed_template_xml = self.load_xml_template(template_xml)
-        if template_name != parsed_template_xml.get('zabbix_export').get('templates').iter()[0].get('template'):
-            self._module.fail_json(msg='XML template name does not match presented name')
-        self._import_template(template= template_xml, dump_format="xml")
-
 
     def _import_template(self,template,dump_format):
         if dump_format not in ["json","xml"]:
@@ -458,16 +452,6 @@ class Template(object):
                 exception=traceback.format_exc()
             )
 
-    def load_xml_template(self,template_xml):
-        try:
-            return ET.fromstring(template_xml)
-        except ET.ParseError as e:
-            self._module.fail_json(
-                msg='Invalid xml provided',
-                details=to_native(e),
-                exception=traceback.format_exc()
-            )
-
 
 def main():
     module = AnsibleModule(
@@ -481,7 +465,6 @@ def main():
             validate_certs=dict(type='bool', required=False, default=True),
             template_name=dict(type='str', required=False),
             template_json=dict(type='json', required=False),
-            template_xml=dict(type='str', required=False),
             template_groups=dict(type='list', required=False),
             link_templates=dict(type='list', required=False),
             clear_templates=dict(type='list', required=False),
@@ -490,7 +473,7 @@ def main():
                                                    'dump_json','dump_xml','dump']),
             timeout=dict(type='int', default=10)
         ),
-        required_one_of=[['template_name', 'template_json','template_xml']],# ['template_json','template_xml']],
+        required_one_of=[['template_name', 'template_json']],
         supports_check_mode=True
     )
 
@@ -505,7 +488,6 @@ def main():
     validate_certs = module.params['validate_certs']
     template_name = module.params['template_name']
     template_json = module.params['template_json']
-    template_xml = module.params['template_xml']
     template_groups = module.params['template_groups']
     link_templates = module.params['link_templates']
     clear_templates = module.params['clear_templates']
@@ -528,10 +510,6 @@ def main():
         # Ensure template_name is not empty for safety check in import_template
         template_loaded = template.load_json_template(template_json)
         template_name = template_loaded['zabbix_export']['templates'][0]['template']
-    elif template_xml and not template_name:
-        # Ensure template_name is not empty for safety check in import_template
-        template_loaded = template.load_xml_template(template_xml)
-        template_name = template_loaded.get('zabbix_export').get('templates').iter()[0].get('template')
     elif template_name and not template_groups and state == 'present':
         module.fail_json(msg="Option template_groups is required when template_json is not used")
 

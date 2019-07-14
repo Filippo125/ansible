@@ -487,7 +487,7 @@ def main():
             clear_templates=dict(type='list', required=False),
             macros=dict(type='list', required=False),
             state=dict(default="present", choices=['present', 'absent',
-                                                   'dump_json','dump_xml']),
+                                                   'dump_json','dump_xml','dump']),
             timeout=dict(type='int', default=10)
         ),
         required_one_of=[['template_name', 'template_json','template_xml']],# ['template_json','template_xml']],
@@ -537,8 +537,8 @@ def main():
 
     template_ids = template.get_template_ids([template_name])
     existing_template = None
-    if "dump" in state:
-        dump_format = state.split("_")[1]
+    if "dump_xml" in state:
+        dump_format = "xml"
     else:
         dump_format = "json"
     if template_ids:
